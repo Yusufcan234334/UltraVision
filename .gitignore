@@ -4,4 +4,6 @@ __pycache__/
 .venv/
 venv/
 datas
-.idea
+order.txt
+x.pt
+y.pt
