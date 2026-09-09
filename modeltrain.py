@@ -2,21 +2,18 @@ import torch
 import torch.nn as siniragi
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 
+
 x = torch.load("x.pt")
 y = torch.load("y.pt")
-result = torch.zeros((x.shape[0], 512), dtype=x.dtype)
+x = x.float()
 
-n = min(x.shape[1], 512)
-result[:, :n] = x[:, :n]
-
-x = result
 torch.manual_seed(42)
 
 
 class muhtisimmodel(siniragi.Module):
     def __init__(self, giris, genislemecikis, katmansayisi, branchsayisi, cikis):
         super().__init__()
-
+        self.genisletici = siniragi.Sequential(siniragi.Linear(4096, 4096), siniragi.ReLU(),siniragi.Linear(4096, 4096), siniragi.ReLU(),siniragi.Unflatten(1, (256, 4, 4)),siniragi.ConvTranspose2d(256, 128, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(128, 64, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(64, 32, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(32, 16, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(16, 8, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(8, 4, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(4, 3, 4, 2, 1))
         self.branchler = siniragi.ModuleList()
         self.fusion_weights = siniragi.Parameter(torch.ones(branchsayisi))
         self.residual_weight = siniragi.Parameter(torch.tensor(1.0))
@@ -81,15 +78,15 @@ class muhtisimmodel(siniragi.Module):
         fused = fused * weights.view(1, -1, 1)
         fused = fused.sum(dim=1)
         fused = self.output1(fused)
+        fused = self.genisletici(fused)
         return fused
 
-model = muhtisimmodel(512, 1024, 2, 3,4096)
+model = muhtisimmodel(64, 128, 4, 4,4096)
+
 print("Model parametre sayısı:")
 print(sum(p.numel() for p in model.parameters()))
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-tahmin = model(x)
-losshesaplayici = siniragi.BCEWithLogitsLoss()
-loss = losshesaplayici(tahmin, y)
+losshesaplayici = siniragi.MSELoss()
 toplam_veri = len(x)
 val_size = int(toplam_veri * 0.2)
 indices = torch.randperm(toplam_veri)
@@ -105,9 +102,6 @@ print("Validation:", x_val.shape, y_val.shape)
 # Sadece train verisinden DataLoader oluştur
 dataset = TensorDataset(x_train, y_train)
 loader = DataLoader(dataset, batch_size=16, shuffle=True)
-dataset = TensorDataset(x, y)
-loader = DataLoader(dataset, batch_size=16, shuffle=True ) #,generator=generator
-
 
 def train(model, loader, debug=True):
     losslar = []
@@ -130,23 +124,12 @@ def train(model, loader, debug=True):
         wakywakyitstimeforval(model, x_val, y_val)
     torch.save(model.state_dict(), "level1model.pth")
 
-
 def wakywakyitstimeforval(model, x_val, y_val):
     model.eval()
     with torch.no_grad():
         tahmin = model(x_val)
-        tahminler = (torch.sigmoid(tahmin) >= 0.5).float()
-
-        tp = ((tahminler == 1) & (y_val == 1)).sum().float()
-        fp = ((tahminler == 1) & (y_val == 0)).sum().float()
-        fn = ((tahminler == 0) & (y_val == 1)).sum().float()
-
-        precision = tp / (tp + fp + 1e-8)
-        recall = tp / (tp + fn + 1e-8)
-        f1 = 2 * precision * recall / (precision + recall + 1e-8)
-
-        print(f"Precision: {precision.item():.3f}  Recall: {recall.item():.3f}  F1: {f1.item():.3f}")
-        print(f"TP: {int(tp.item())}  FP: {int(fp.item())}  FN: {int(fn.item())}")
+        mse = losshesaplayici(tahmin, y_val)
+        print(f"Val MSE: {mse.item():.5f}")
     model.train()
 
 if __name__ == "__main__":
