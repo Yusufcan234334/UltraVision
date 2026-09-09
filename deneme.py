@@ -1,12 +1,16 @@
 import torch
 import torch.nn as siniragi
-from torch.utils.data import Dataset, DataLoader, TensorDataset
+from PIL import Image
+
+# CPU kullan
+device = torch.device("cpu")
 
 x = torch.load("x.pt")
 y = torch.load("y.pt")
 x = x.float()
 
 torch.manual_seed(42)
+
 
 class muhtisimmodel(siniragi.Module):
     def __init__(self, giris, genislemecikis, katmansayisi, branchsayisi, cikis):
@@ -48,10 +52,17 @@ class muhtisimmodel(siniragi.Module):
                 )
 
             self.branchler.append(katmanlar)
+
         heads = 4
         while neuroncountoutson % heads != 0 and heads > 1:
             heads //= 2
-        self.attention = siniragi.MultiheadAttention(embed_dim=neuroncountoutson,num_heads=heads,batch_first=True)
+
+        self.attention = siniragi.MultiheadAttention(
+            embed_dim=neuroncountoutson,
+            num_heads=heads,
+            batch_first=True
+        )
+
         self.output1 = siniragi.Linear(neuroncountoutson,cikis)
 
     def forward(self, x):
@@ -79,54 +90,98 @@ class muhtisimmodel(siniragi.Module):
         fused = self.genisletici(fused)
         return fused
 
-model = muhtisimmodel(64, 128, 4, 4,4096)
 
-print("Model parametre sayısı:")
-print(sum(p.numel() for p in model.parameters()))
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-losshesaplayici = siniragi.MSELoss()
+model = muhtisimmodel(64, 128, 4, 4, 4096)
+
+# Model CPU'da
+model = model.to(device)
+
 toplam_veri = len(x)
 val_size = int(toplam_veri * 0.2)
 indices = torch.randperm(toplam_veri)
+
 val_indices = indices[:val_size]
-train_indices = indices[val_size:]
+
 x_val = x[val_indices]
 y_val = y[val_indices]
-x_train = x[train_indices]
-y_train = y[train_indices]
-print("Train:", x_train.shape, y_train.shape)
-print("Validation:", x_val.shape, y_val.shape)
-dataset = TensorDataset(x_train, y_train)
-loader = DataLoader(dataset, batch_size=16, shuffle=True)
 
-def train(model, loader, debug=True):
-    losslar = []
-    for i in range(149):
-        for x_batch, y_batch in loader:
+model.load_state_dict(
+    torch.load("ultravision.pth", map_location=device)
+)
 
-            optimizer.zero_grad()
+model.eval()
 
-            tahmin = model(x_batch)
+N = 8
+N = min(N, x_val.shape[0])
 
-            loss = losshesaplayici(tahmin, y_batch)
-            losslar.append(loss.item())
+with torch.no_grad():
 
-            loss.backward()
+    tahmin = model(
+        x_val[:N].to(device)
+    )
 
-            optimizer.step()
-        tamlosslar = sum(losslar) / len(losslar)
-        losslar = []
-        if debug == True: print(f"Epoch {i} ortalama loss: {tamlosslar}")
-        wakywakyitstimeforval(model, x_val, y_val)
-    torch.save(model.state_dict(), "ultravision.pth")
+    tahmin = torch.clamp(tahmin, 0, 1)
 
-def wakywakyitstimeforval(model, x_val, y_val):
-    model.eval()
-    with torch.no_grad():
-        tahmin = model(x_val)
-        mse = losshesaplayici(tahmin, y_val)
-        print(f"Val MSE: {mse.item():.5f}")
-    model.train()
 
-if __name__ == "__main__":
-    train(model,loader, )
+def tensor_to_pil(t):
+    arr = (
+        t.permute(1, 2, 0)
+        .numpy() * 255
+    ).astype("uint8")
+
+    return Image.fromarray(arr)
+
+
+IMG_SIZE = y.shape[-1]
+
+gap = 8
+
+grid = Image.new(
+    "RGB",
+    (
+        IMG_SIZE * 2 + gap,
+        IMG_SIZE * N + gap * (N - 1)
+    ),
+    (30, 30, 30)
+)
+
+
+for i in range(N):
+
+    gercek = tensor_to_pil(y_val[i])
+
+    tahmin_img = tensor_to_pil(tahmin[i])
+
+    y_off = i * (IMG_SIZE + gap)
+
+    grid.paste(
+        gercek,
+        (0, y_off)
+    )
+
+    grid.paste(
+        tahmin_img,
+        (IMG_SIZE + gap, y_off)
+    )
+
+
+grid.save("karsilastirma.png")
+
+
+mse_per_sample = (
+    (tahmin - y_val[:N]) ** 2
+).mean(dim=(1, 2, 3))
+
+
+for i in range(N):
+
+    print(
+        f"ornek {i}  mse: "
+        f"{mse_per_sample[i].item():.5f}"
+    )
+
+
+print(
+    "kaydedildi: karsilastirma.png  "
+    "(sol: gercek, sag: tahmin)"
+)
