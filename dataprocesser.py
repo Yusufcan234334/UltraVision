@@ -17,7 +17,7 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 CHUNK_SIZE = 10
 CHUNK_DIR = os.path.join(OUT_DIR, "_chunks")
 
-GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+GROQ_VISION_MODEL = "qwen/qwen3.6-27b"
 GROQ_CAPTION_PROMPT = (
     "Describe this image in one short sentence, suitable as a caption for an "
     "image generation model's training data. Be concrete and visual, no preamble."
@@ -46,6 +46,7 @@ def caption_with_groq(image_path):
         ],
         max_completion_tokens=100,
         temperature=0.3,
+        reasoning_effort="none",
     )
     return completion.choices[0].message.content.strip()
 
