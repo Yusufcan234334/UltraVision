@@ -1,6 +1,11 @@
 import torch
 import torch.nn as siniragi
 from torch.utils.data import Dataset, DataLoader, TensorDataset
+from transformers import CLIPTokenizer
+
+tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-base-patch32")
+vocab_size = tokenizer.vocab_size
+print(vocab_size)
 
 x = torch.load("x.pt")
 y = torch.load("y.pt")
@@ -11,7 +16,16 @@ torch.manual_seed(42)
 class muhtisimmodel(siniragi.Module):
     def __init__(self, giris, genislemecikis, katmansayisi, branchsayisi, cikis):
         super().__init__()
-        self.genisletici = siniragi.Sequential(siniragi.ReLU(),siniragi.Linear(4096, 4096), siniragi.ReLU(),siniragi.Unflatten(1, (256, 4, 4)),siniragi.ConvTranspose2d(256, 128, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(128, 64, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(64, 32, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(32, 16, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(16, 8, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(8, 4, 4, 2, 1), siniragi.ReLU(),siniragi.ConvTranspose2d(4, 3, 4, 2, 1))
+        self.genisletici = siniragi.Sequential(
+            siniragi.Unflatten(1, (256, 4, 4)),
+            siniragi.ConvTranspose2d(256, 128, 4, 2, 1), siniragi.ReLU(),
+            siniragi.ConvTranspose2d(128, 64, 4, 2, 1), siniragi.ReLU(),
+            siniragi.ConvTranspose2d(64, 32, 4, 2, 1), siniragi.ReLU(),
+            siniragi.ConvTranspose2d(32, 16, 4, 2, 1), siniragi.ReLU(),
+            siniragi.ConvTranspose2d(16, 8, 4, 2, 1), siniragi.ReLU(),
+            siniragi.ConvTranspose2d(8, 4, 4, 2, 1), siniragi.ReLU(),
+            siniragi.ConvTranspose2d(4, 3, 4, 2, 1),
+        )
         self.branchler = siniragi.ModuleList()
         self.fusion_weights = siniragi.Parameter(torch.ones(branchsayisi))
         self.residual_weight = siniragi.Parameter(torch.tensor(1.0))
@@ -79,7 +93,7 @@ class muhtisimmodel(siniragi.Module):
         fused = self.genisletici(fused)
         return fused
 
-model = muhtisimmodel(64, 128, 4, 4,4096)
+model = muhtisimmodel(64, 128, 4, 4, 4096)
 
 print("Model parametre sayısı:")
 print(sum(p.numel() for p in model.parameters()))
@@ -118,7 +132,7 @@ def train(model, loader, debug=True):
         losslar = []
         if debug == True: print(f"Epoch {i} ortalama loss: {tamlosslar}")
         wakywakyitstimeforval(model, x_val, y_val)
-    torch.save(model.state_dict(), "ultravision.pth")
+    torch.save(model.state_dict(), "ultravision-2335.pth")
 
 def wakywakyitstimeforval(model, x_val, y_val):
     model.eval()
